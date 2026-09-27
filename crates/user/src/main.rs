@@ -25,9 +25,17 @@ pub extern "C" fn _start() -> ! {
 
     #[cfg(feature = "inject-user-fault")]
     {
-        // SAFETY: 故意解引用未映射地址；这正是要验证的 CPL 3 故障路径。
+        // 故意读空指针，验证 CPL 3 的故障路径。**用内联汇编而不是 `read_volatile`**：
+        // 后者会把带 `.rodata` 绝对引用的代码拉进来，而镜像链接在 4 GiB，默认的 small
+        // 代码模型只能用 32 位绝对重定位（R_X86_64_32S，±2 GiB）——链接器会直接报错。
+        // 一条 `mov` 不引用任何数据，因此在 small 模型下也能链接。
+        // SAFETY: 故意触发 #PF；这正是要验证的用户态故障路径。
         unsafe {
-            core::ptr::read_volatile(core::ptr::null::<u8>());
+            core::arch::asm!(
+                "mov rax, qword ptr [0]",
+                out("rax") _,
+                options(nostack, preserves_flags),
+            );
         }
     }
 

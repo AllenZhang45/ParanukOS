@@ -369,12 +369,21 @@ grep_log "$LOG_DIR/m3a-double-fault.log" '#DF 双重故障' "指认了向量（#
 grep_log "$LOG_DIR/m3a-double-fault.log" '实际运行栈：IST1 栈' "直接证明异常换到了 IST1 栈（而不是三重故障）"
 grep_log "$LOG_DIR/m3a-double-fault.log" 'error_code=0x0' "帧格式完整（真正的 #DF 带错误码）"
 
-# --- J（暂缺）：inject-user-fault 变体在 4 GiB 下的重定位尚未解决 ---
+# --- J. 故障注入：服务在 CPL 3 解引用空指针 → 用户态故障 47（M4a） ---
 #
-# 它的 .rodata 引用需要 R_X86_64_64，而默认 small 代码模型发的是 R_X86_64_32S（超出 ±2 GiB）。
-# 打开 `-C code-model=large` 后链接能过，但普通构建的 ELF 反而变成"入口不落在可执行段内"，
-# 因此先回退，等这块单独查清后再补上这条反例（用户态故障路径本身已在真机验证：见内核日志
-# 里 "服务在 CPL 3 上发生异常" → 47）。
+# 区分的关键：CPL 3 的异常是"服务崩了"（47），CPL 0 的异常才是"内核崩了"（41）。
+# 注入用内联汇编读空指针，避免把 .rodata 绝对引用拉进来（镜像链接在 4 GiB，small 代码模型
+# 只能用 ±2 GiB 的 32 位绝对重定位，链接器会拒绝）。
+echo "==> 附加用例：用户态故障（故障注入）"
+if ! cargo build -p user --target "$BARE_TARGET" --features inject-user-fault; then
+    echo "[-] 注入用户态故障的服务构建失败。" >&2
+    exit 1
+fi
+cp "target/${BARE_TARGET}/debug/user" "$WORK/USER-fault.ELF"
+boot_case "$WORK/loader.efi" "$WORK/KERNEL.ELF" "$LOG_DIR/m4a-user-fault.log" "$EXIT_USER_FAILURE" \
+    "服务在 CPL 3 上触发 #PF：以 47（用户态故障）退出，而不是 41" "$WORK/USER-fault.ELF"
+grep_log "$LOG_DIR/m4a-user-fault.log" '服务在 CPL 3 上发生异常' "报告了用户态故障而不是内核崩溃"
+grep_log "$LOG_DIR/m4a-user-fault.log" 'cr2=0x0' "CR2 指出故障地址正是服务解引用的空指针"
 
 # --- I. 故障注入：抢占被关闭 → 自旋线程拿不到标志 → 45（M3b） ---
 #

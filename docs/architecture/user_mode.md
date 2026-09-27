@@ -265,11 +265,10 @@ of this document, `kernel_interface.md` (§5.5 note, §7.2 exit codes, §9), REA
       (the only live threads are the boot context and the idle thread) and its exit reaps its stack (frame count back to baseline);
 - [ ] `inject-user-bad-pointer` → **47** with a log line naming the rejected VA;
 - [ ] `inject-user-fault` → **47** with `cr2` naming the faulting VA, *not* 41;
-- [ ] **blocked:** `inject-user-fault` is not in the smoke test yet. The variant links only with
-      `-C code-model=large` (its `.rodata` references need `R_X86_64_64`), but that made the plain
-      build's ELF stop putting its entry inside an executable segment, so the flag was reverted. The 47
-      path itself is verified on hardware (log below); the case returns once the relocation question is
-      settled. **41** (the M1/M2/M3 negative cases do not regress);
+- [x] `inject-user-fault` → **47** with `cr2` naming the faulting VA, **not** 41. The injection is an
+      inline-asm null read rather than `read_volatile`: the latter pulls in an absolute `.rodata`
+      reference, and since the image links at 4 GiB the default small code model can only emit a
+      ±2 GiB 32-bit absolute relocation, which the linker rejects. **41** (the M1/M2/M3 negative cases do not regress);
 - [ ] `cargo test -p kernel-memory -p boot-info …` passes; clippy/fmt clean in every configuration;
 - [ ] `check_kernel_elf.py` still passes and the kernel image stays under `MAX_KERNEL_PAGES`.
 

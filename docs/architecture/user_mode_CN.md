@@ -237,10 +237,9 @@ pub struct BootInfo {
 - [x] 服务运行在 CPL 3（日志里至少出现一次 `cs=0x2B`），且它的 `write` 输出出现在串口日志里；
 - [x] 它至少被抢占一次，退出后栈被回收（页帧数回到基线）；
 - [ ] `inject-user-bad-pointer` → **47**，日志指出被拒绝的虚拟地址；
-- [ ] `inject-user-fault` → **47**，`cr2` 指出故障地址，而**不是** 41；
-      **（被阻塞）** 该变体只有加 `-C code-model=large` 才链接得过（`.rodata` 引用需要
-      `R_X86_64_64`，默认 small 代码模型发 `R_X86_64_32S`），但加了之后普通构建的 ELF 变成
-      「入口不落在可执行段内」，因此先回退；47 这条路径本身已在真机验证（见下方日志）。
+- [x] `inject-user-fault` → **47**，`cr2` 指出故障地址，而**不是** 41（注入改写成一条读空指针的
+      内联汇编：`read_volatile` 会拉进 `.rodata` 绝对引用，而镜像链接在 4 GiB，默认 small 代码
+      模型只能用 ±2 GiB 的 32 位绝对重定位，链接器会拒绝）；
 - [x] CPL 0 的故障仍然报 **41**（M1/M2/M3 的反例无回归）；
 - [x] `cargo test -p kernel-memory -p boot-info …` 通过；fmt/clippy 在所有配置下干净；
 - [x] `check_kernel_elf.py` 仍通过，内核镜像仍在 `MAX_KERNEL_PAGES` 之内。
@@ -286,8 +285,3 @@ pub struct BootInfo {
 3. `crates/kernel-memory` 的地址空间构建器有宿主单测；改动必须配套测试。
 4. 双语文档：每次改动必须同时更新本文件与 [user_mode.md](user_mode.md)。
 5. 实现状态：每完成一部分，更新 §11 与 `kernel_interface_CN.md` §9 的 M4 行。
-
-> **已知缺口（M4a）：** `inject-user-fault` 还没有进冒烟测试——该变体只有加 `-C code-model=large`
-> 才链接得过（`.rodata` 引用需要 `R_X86_64_64`，默认 small 代码模型发的是 `R_X86_64_32S`），
-> 但加了之后普通构建的 ELF 变成「入口不落在可执行段内」，因此先回退。47 这条路径本身已在真机
-> 验证（日志里那句「服务在 CPL 3 上发生异常」），等重定位问题查清后再把反例加回去。
